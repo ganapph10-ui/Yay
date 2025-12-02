@@ -27,6 +27,7 @@ async function processTaskWithBrowser(
   if (!soraUrl) {
     const reason = 'Task không có field video_url';
     console.error('[worker] ' + reason);
+    // Thiếu dữ liệu đầu vào → báo lỗi hẳn, không retry
     await taskClient.reportTask(task.id, reason);
     return 'task_processed'; // Đã xử lý xong (report), cần đóng browser
   }
@@ -41,9 +42,9 @@ async function processTaskWithBrowser(
   if (!browserResult) {
     const reason = 'Không remove được watermark qua browser (socialutils.io)';
     console.error('[worker] ' + reason);
-    // Screenshot đã được gửi trong removeWatermarkViaBrowser
-    await taskClient.reportTask(task.id, reason);
-    return 'task_processed'; // Đã xử lý xong (report), cần đóng browser
+    // Lỗi tạm thời khi xử lý → reset để hệ thống retry task với worker khác/lần khác
+    await taskClient.resetTask(task.id);
+    return 'task_processed'; // Đã xử lý xong (reset), cần đóng browser
   }
 
   // 3) Download video (local) từ mediaUrl
@@ -66,8 +67,9 @@ async function processTaskWithBrowser(
   } else {
     const reason = 'Không download được video từ mediaUrl';
     console.error('[worker] ' + reason);
-    await taskClient.reportTask(task.id, reason);
-    return 'task_processed'; // Đã xử lý xong (report), cần đóng browser
+    // Download fail cũng coi là lỗi tạm thời → reset cho retry
+    await taskClient.resetTask(task.id);
+    return 'task_processed'; // Đã xử lý xong (reset), cần đóng browser
   }
 }
 
