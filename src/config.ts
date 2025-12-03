@@ -11,7 +11,11 @@ export interface RuntimeConfig {
   PRODUCT_CODE: string;
   FINGERPRINT_WORKDIR: string;
   BROWSER_HEADLESS: boolean;
-  REMOVER_URL: string;
+  SOCIAL_URL: string;
+  SORA_PRO_BASE_URL: string;
+  SORA_PRO_API_URL: string;
+  SORA_PRO_PROFILE_DIR: string;
+  SORA_PRO_CONCURRENCY: number;
   OUTPUT_DIR: string;
   SKIP_GET_COOKIES: boolean;
   TELEGRAM_BOT_TOKEN: string;
@@ -30,10 +34,18 @@ export const runtimeConfig: RuntimeConfig = {
   PRODUCT_CODE: process.env.PRODUCT_CODE ?? 'sora-2-remove-watermark',
   FINGERPRINT_WORKDIR: process.env.FINGERPRINT_WORKDIR ?? '.fingerprint-engine',
   BROWSER_HEADLESS: toBool(process.env.BROWSER_HEADLESS, false),
-  REMOVER_URL:
-    process.env.REMOVER_URL ??
+  SOCIAL_URL:
+    process.env.SOCIAL_URL ??
     process.env.SOCIALUTILS_URL ??
-    'https://www.removesorawatermark.online/',
+    process.env.REMOVER_URL ??
+    'https://socialutils.io/sora-watermark-remover',
+  SORA_PRO_BASE_URL:
+    process.env.SORA_PRO_BASE_URL ?? 'https://www.removesorawatermark.pro/en',
+  SORA_PRO_API_URL:
+    process.env.SORA_PRO_API_URL ??
+    'https://www.removesorawatermark.pro/api/jobs/post-url',
+  SORA_PRO_PROFILE_DIR: process.env.SORA_PRO_PROFILE_DIR ?? '.sora-pro-profile',
+  SORA_PRO_CONCURRENCY: Number(process.env.SORA_PRO_CONCURRENCY ?? '3') || 3,
   OUTPUT_DIR: process.env.OUTPUT_DIR ?? 'downloads',
   SKIP_GET_COOKIES: toBool(process.env.SKIP_GET_COOKIES, false),
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? '',

@@ -7,7 +7,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "worker": "node dist/index.js",
-    "test-remover": "node dist/testRemover.js"
+    "test-remover": "node dist/testRemover.js",
+    "sora-login": "node dist/soraLogin.js",
+    "sora": "node dist/soraWorker.js"
   },
   "dependencies": {
     "@playwright/test": "^1.48.0",

@@ -25,29 +25,79 @@ plugin.setWorkingFolder(fingerprintEngineDir);
 plugin.setServiceKey(runtimeConfig.BABLOSOFT_API_KEY);
 
 const DEFAULT_TAGS: Tag[] = ['Microsoft Windows', 'Chrome'];
+const usedFingerprintCombosByDate = new Map<string, Set<string>>();
+const MAX_COMBO_DUPLICATE_RETRIES = 5;
+
+function getTodayKey(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getProxyKey(proxy: string | null): string {
+  return proxy?.trim()?.toLowerCase() ?? 'no-proxy';
+}
+
+function cleanupOldDateEntries(currentKey: string): void {
+  for (const key of usedFingerprintCombosByDate.keys()) {
+    if (key !== currentKey) {
+      usedFingerprintCombosByDate.delete(key);
+    }
+  }
+}
+
+function hasUsedCombo(dateKey: string, comboKey: string): boolean {
+  return usedFingerprintCombosByDate.get(dateKey)?.has(comboKey) ?? false;
+}
+
+function markComboUsed(dateKey: string, comboKey: string): void {
+  let combos = usedFingerprintCombosByDate.get(dateKey);
+  if (!combos) {
+    combos = new Set<string>();
+    usedFingerprintCombosByDate.set(dateKey, combos);
+  }
+  combos.add(comboKey);
+}
 
 export async function launchBrowser(options: LaunchOptions): Promise<BrowserSession> {
   const artifactsDir = await mkdtemp(join(tmpdir(), 'sora-artifacts-'));
   // Mỗi lần chạy dùng một profile tạm → fingerprint mới, không reuse profile
   const userDataDir = await mkdtemp(join(tmpdir(), 'sora-profile-'));
+  const todayKey = getTodayKey();
+  const proxyKey = getProxyKey(options.proxy);
+  cleanupOldDateEntries(todayKey);
 
   // Retry logic cho fetch fingerprint (vì API có thể trả về "undefined" hoặc lỗi)
   let fingerprint: string | null = null;
   const maxRetries = 3;
   let retryCount = 0;
+  let duplicateComboCount = 0;
 
   while (!fingerprint && retryCount < maxRetries) {
     try {
       console.log(
         `[browser] Requesting new fingerprint from Bablosoft with tags: ${DEFAULT_TAGS.join(', ')} (attempt ${retryCount + 1}/${maxRetries})`
       );
-      fingerprint = await plugin.fetch({ tags: DEFAULT_TAGS });
+      let fetchedFingerprint = await plugin.fetch({ tags: DEFAULT_TAGS });
 
-      if (!fingerprint || fingerprint.trim() === '' || fingerprint === 'undefined') {
+      if (!fetchedFingerprint || fetchedFingerprint.trim() === '' || fetchedFingerprint === 'undefined') {
         throw new Error('Fingerprint API trả về giá trị không hợp lệ');
       }
 
-      console.log('[browser] Đã lấy fingerprint thành công');
+      const comboKey = `${proxyKey}|${fetchedFingerprint}`;
+      if (hasUsedCombo(todayKey, comboKey)) {
+        duplicateComboCount += 1;
+        console.warn(
+          `[browser] Fingerprint + proxy combo đã được dùng hôm nay (combo ${duplicateComboCount}/${MAX_COMBO_DUPLICATE_RETRIES}). Đang yêu cầu fingerprint khác...`
+        );
+        if (duplicateComboCount >= MAX_COMBO_DUPLICATE_RETRIES) {
+          throw new Error('Không thể tìm fingerprint mới chưa dùng cùng proxy trong ngày hôm nay');
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        continue;
+      }
+
+      fingerprint = fetchedFingerprint;
+      markComboUsed(todayKey, comboKey);
+      console.log('[browser] Đã lấy fingerprint thành công và đánh dấu combo fingerprint+proxy cho ngày hôm nay');
       break;
     } catch (error: any) {
       retryCount++;

@@ -40,7 +40,7 @@ async function processTaskWithBrowser(
   const browserResult = await removeWatermarkViaBrowser(page, soraUrl, task.id);
 
   if (!browserResult) {
-    const reason = 'Không remove được watermark qua browser (remover provider)';
+    const reason = 'Không remove được watermark qua browser (social utils)';
     console.error('[worker] ' + reason);
     // Lỗi tạm thời khi xử lý → reset để hệ thống retry task với worker khác/lần khác
     await taskClient.resetTask(task.id);
@@ -89,8 +89,8 @@ async function runWorkerOnce(): Promise<void> {
   let page: Page | null = browserSession.page;
 
   // Load web và đợi 5s để trang load xong
-  console.log('[worker] Browser đã sẵn sàng, đang load trang remover...');
-  await page.goto(runtimeConfig.REMOVER_URL, {
+  console.log('[worker] Browser đã sẵn sàng, đang load trang socialutils...');
+  await page.goto(runtimeConfig.SOCIAL_URL, {
     waitUntil: 'domcontentloaded',
     timeout: 60_000
   });
@@ -138,8 +138,8 @@ async function runWorkerOnce(): Promise<void> {
         page = browserSession.page;
 
         // Load web provider mới và đợi 5s để trang load xong
-        console.log('[worker] Browser mới đã sẵn sàng, đang load trang remover...');
-        await page.goto(runtimeConfig.REMOVER_URL, {
+        console.log('[worker] Browser mới đã sẵn sàng, đang load trang socialutils...');
+        await page.goto(runtimeConfig.SOCIAL_URL, {
           waitUntil: 'domcontentloaded',
           timeout: 60_000
         });
@@ -173,8 +173,8 @@ async function runWorkerOnce(): Promise<void> {
       page = browserSession.page;
 
       // Load web provider mới và đợi 5s để trang load xong
-      console.log('[worker] Browser mới đã sẵn sàng, đang load trang remover...');
-      await page.goto(runtimeConfig.REMOVER_URL, {
+      console.log('[worker] Browser mới đã sẵn sàng, đang load trang socialutils...');
+      await page.goto(runtimeConfig.SOCIAL_URL, {
         waitUntil: 'domcontentloaded',
         timeout: 60_000
       });

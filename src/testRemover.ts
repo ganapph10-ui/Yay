@@ -7,7 +7,7 @@ const TEST_SHARE_LINK =
 
 async function main() {
   console.log('============================================================');
-  console.log('TEST REMOVE SORA WATERMARK VIA removesorawatermark.online');
+  console.log('TEST REMOVE SORA WATERMARK VIA socialutils.io');
   console.log('============================================================');
   console.log('[test] Sora share link:', TEST_SHARE_LINK);
 
@@ -17,17 +17,17 @@ async function main() {
   const { context, page } = await launchBrowser({ proxy });
 
   try {
-    // 2) Mở trang removesorawatermark.online và đợi load
-    console.log('[test] Điều hướng tới https://www.removesorawatermark.online/ ...');
-    await page.goto('https://www.removesorawatermark.online/', {
+    // 2) Mở trang socialutils.io và đợi load
+    console.log('[test] Điều hướng tới https://socialutils.io/sora-watermark-remover ...');
+    await page.goto('https://socialutils.io/sora-watermark-remover', {
       waitUntil: 'domcontentloaded',
       timeout: 60_000
     });
     console.log('[test] Đợi 5s cho trang load hoàn toàn...');
     await page.waitForTimeout(5_000);
 
-    // 3) Điền Sora share link vào input #share-link
-    const input = page.locator('#share-link');
+    // 3) Điền Sora share link vào input video
+    const input = page.locator('#video-input, input[name="url"], input[name="videoUrl"]').first();
     console.log('[test] Click vào input...');
     await input.click({ timeout: 15_000 });
     await input.fill('');
@@ -42,26 +42,26 @@ async function main() {
       );
     }
 
-    // 4) Click nút "Remove Watermark Now" và bắt response API /api/removesora/remove
-    console.log('[test] Click nút "Remove Watermark Now" và chờ response API...');
+    // 4) Click nút "Remove Watermark" và bắt response API /api/sora/remove-watermark
+    console.log('[test] Click nút "Remove Watermark" và chờ response API...');
 
     const [response] = await Promise.all([
       page.waitForResponse(
         (res) =>
-          res.url().includes('/api/removesora/remove') &&
+          res.url().includes('/api/sora/remove-watermark') &&
           res.request().method() === 'POST',
         { timeout: 60_000 }
       ),
-      page.locator('text=Remove Watermark Now').click()
+      page.getByRole('button', { name: /Remove Watermark/i }).click()
     ]);
 
-    console.log('[test] Đã nhận response từ /api/removesora/remove');
+    console.log('[test] Đã nhận response từ /api/sora/remove-watermark');
 
     const result = (await response.json()) as any;
     console.log('[test] JSON response:', result);
 
-    if (result?.success && typeof result?.resultVideoUrl === 'string') {
-      console.log('✅ SUCCESS - resultVideoUrl:', result.resultVideoUrl);
+    if (result?.errorCode == null && typeof result?.mediaUrl === 'string') {
+      console.log('✅ SUCCESS - mediaUrl:', result.mediaUrl);
     } else {
       console.log('❌ API trả về lỗi hoặc không có resultVideoUrl');
     }
