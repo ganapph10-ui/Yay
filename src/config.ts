@@ -11,7 +11,7 @@ export interface RuntimeConfig {
   PRODUCT_CODE: string;
   FINGERPRINT_WORKDIR: string;
   BROWSER_HEADLESS: boolean;
-  SOCIALUTILS_URL: string;
+  REMOVER_URL: string;
   OUTPUT_DIR: string;
   SKIP_GET_COOKIES: boolean;
   TELEGRAM_BOT_TOKEN: string;
@@ -30,8 +30,10 @@ export const runtimeConfig: RuntimeConfig = {
   PRODUCT_CODE: process.env.PRODUCT_CODE ?? 'sora-2-remove-watermark',
   FINGERPRINT_WORKDIR: process.env.FINGERPRINT_WORKDIR ?? '.fingerprint-engine',
   BROWSER_HEADLESS: toBool(process.env.BROWSER_HEADLESS, false),
-  SOCIALUTILS_URL:
-    process.env.SOCIALUTILS_URL ?? 'https://socialutils.io/sora-watermark-remover',
+  REMOVER_URL:
+    process.env.REMOVER_URL ??
+    process.env.SOCIALUTILS_URL ??
+    'https://www.removesorawatermark.online/',
   OUTPUT_DIR: process.env.OUTPUT_DIR ?? 'downloads',
   SKIP_GET_COOKIES: toBool(process.env.SKIP_GET_COOKIES, false),
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN ?? '',
