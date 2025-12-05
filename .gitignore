@@ -3,3 +3,5 @@ node_modules
 .fingerprint-engine
 dist
 downloads
+.sora-pro-profile
+.sora-pro-cookies.json
