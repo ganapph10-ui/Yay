@@ -125,27 +125,27 @@ async function runWorkerOnce(): Promise<void> {
         console.log(
           '[worker] Đã xử lý đủ 2 task cho browser hiện tại, đóng browser và chuẩn bị load browser mới...'
         );
-        await context.close();
+      await context.close();
 
-        // Đợi một chút trước khi load browser mới
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      // Đợi một chút trước khi load browser mới
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
 
-        // Load browser mới cho task tiếp theo
-        console.log('[worker] Đang load browser mới với fingerprint + proxy...');
-        const newProxy = getRandomProxy();
-        browserSession = await launchBrowser({ proxy: newProxy });
-        context = browserSession.context;
-        page = browserSession.page;
+      // Load browser mới cho task tiếp theo
+      console.log('[worker] Đang load browser mới với fingerprint + proxy...');
+      const newProxy = getRandomProxy();
+      browserSession = await launchBrowser({ proxy: newProxy });
+      context = browserSession.context;
+      page = browserSession.page;
 
         // Load web provider mới và đợi 5s để trang load xong
         console.log('[worker] Browser mới đã sẵn sàng, đang load trang socialutils...');
         await page.goto(runtimeConfig.SOCIAL_URL, {
-          waitUntil: 'domcontentloaded',
-          timeout: 60_000
-        });
-        console.log('[worker] Đã load trang, đợi 5s để trang load hoàn toàn...');
-        await new Promise((resolve) => setTimeout(resolve, 5_000));
-        console.log('[worker] Bắt đầu claim task...');
+        waitUntil: 'domcontentloaded',
+        timeout: 60_000
+      });
+      console.log('[worker] Đã load trang, đợi 5s để trang load hoàn toàn...');
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      console.log('[worker] Bắt đầu claim task...');
 
         // Reset counter cho session mới
         sessionTaskCount = 0;
@@ -156,7 +156,7 @@ async function runWorkerOnce(): Promise<void> {
       // Nếu lỗi, đóng browser và load lại
       try {
         if (context) {
-          await context.close();
+        await context.close();
         }
       } catch (closeError) {
         console.error('[worker] Lỗi khi đóng browser:', closeError);

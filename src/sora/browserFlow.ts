@@ -56,7 +56,7 @@ export async function removeWatermarkViaBrowser(
     }
 
     console.log('[browser-flow] Đang click button Remove Watermark...');
-
+    
     const [response] = await Promise.all([
       page.waitForResponse(
         (res) =>

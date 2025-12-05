@@ -9,6 +9,8 @@
     "worker": "node dist/index.js",
     "test-remover": "node dist/testRemover.js",
     "sora-login": "node dist/soraLogin.js",
+    "sora-login:profile": "node dist/soraLogin.js --profile",
+    "sora-browser": "node dist/soraLogin.js --profile",
     "sora": "node dist/soraWorker.js"
   },
   "dependencies": {

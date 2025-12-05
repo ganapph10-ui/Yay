@@ -9,6 +9,7 @@ import type { Tag } from 'playwright-with-fingerprints';
 const DEFAULT_TAGS: Tag[] = ['Microsoft Windows', 'Chrome'];
 
 async function main() {
+  const useProfile = process.argv.includes('--profile') || process.argv.includes('--reuse-profile');
   console.log('============================================================');
   console.log('SORA PRO PREMIUM LOGIN HELPER');
   console.log('============================================================');
@@ -18,10 +19,13 @@ async function main() {
     runtimeConfig.SORA_PRO_BASE_URL ?? 'https://www.removesorawatermark.pro/en'
   );
 
-  let browser: any = null;
+  console.log('[sora-login] Chế độ:', useProfile ? 'Dùng persistent profile (load & lưu lại)' : 'Dùng profile tạm (chỉ lưu cookies file)');
+
+  let browserOrContext: any = null;
+  let context: any = null;
   let page: any = null;
 
-  // Thử load fingerprint để browser trông "hợp lệ" hơn (không dùng persistent profile để tránh lỗi quota)
+  // Chuẩn bị fingerprint để browser trông "hợp lệ" hơn
   try {
     plugin.setWorkingFolder(resolve(runtimeConfig.FINGERPRINT_WORKDIR));
     plugin.setServiceKey(runtimeConfig.BABLOSOFT_API_KEY);
@@ -32,10 +36,6 @@ async function main() {
     }
     plugin.useFingerprint(fp);
     console.log('[sora-login] Đã áp dụng fingerprint thành công');
-
-    console.log('[sora-login] Đang mở browser với fingerprint (không persistent)...');
-    browser = await plugin.launch({ headless: false });
-    page = await browser.newPage();
   } catch (err: any) {
     console.error(
       '[sora-login] Lỗi khi dùng fingerprint, không thể mở browser fingerprinted:',
@@ -43,10 +43,36 @@ async function main() {
     );
   }
 
-  if (!browser || !page) {
-    throw new Error(
-      'Không thể mở browser với fingerprint. Vui lòng kiểm tra lại cấu hình Bablosoft.'
-    );
+  if (useProfile) {
+    try {
+      console.log(
+        '[sora-login] Đang mở browser fingerprint + persistent profile...',
+        runtimeConfig.SORA_PRO_PROFILE_DIR
+      );
+      const userDataDir = resolve(runtimeConfig.SORA_PRO_PROFILE_DIR);
+      context = await plugin.launchPersistentContext(userDataDir, { headless: false });
+      page = context.pages()[0] ?? (await context.newPage());
+      browserOrContext = context;
+    } catch (err: any) {
+      console.error(
+        '[sora-login] Lỗi khi launch persistent (fingerprint), thử lại với browser thường:',
+        err?.message || String(err)
+      );
+      const { chromium } = await import('@playwright/test');
+      const userDataDir = resolve(runtimeConfig.SORA_PRO_PROFILE_DIR);
+      context = await chromium.launchPersistentContext(userDataDir, { headless: false });
+      page = context.pages()[0] ?? (await context.newPage());
+      browserOrContext = context;
+    }
+  } else {
+    console.log('[sora-login] Đang mở browser fingerprint (profile tạm, không lưu)...');
+    browserOrContext = await plugin.launch({ headless: false });
+    page = await browserOrContext.newPage();
+    context = page.context();
+  }
+
+  if (!browserOrContext || !page || !context) {
+    throw new Error('Không thể mở browser. Vui lòng kiểm tra lại cấu hình Bablosoft/Playwright.');
   }
 
   await page.goto(runtimeConfig.SORA_PRO_BASE_URL, {
@@ -70,15 +96,16 @@ async function main() {
 
   console.log('[sora-login] Đang đọc cookies và lưu ra file...');
   const origin = new URL(runtimeConfig.SORA_PRO_BASE_URL).origin;
-  const context = page.context();
   const cookies = await context.cookies(origin);
   const cookieFile = resolve(runtimeConfig.SORA_PRO_COOKIE_FILE);
   await fs.writeFile(cookieFile, JSON.stringify(cookies, null, 2), 'utf8');
   console.log('[sora-login] Đã lưu cookies vào', cookieFile);
 
   console.log('[sora-login] Đang đóng browser...');
-  await browser.close();
-  console.log('[sora-login] Hoàn tất. Bạn có thể chạy: npm run sora');
+  await browserOrContext.close();
+  console.log(
+    '[sora-login] Hoàn tất. Bạn có thể chạy: npm run sora (worker) hoặc npm run sora-login --profile để xem lại).'
+  );
 }
 
 main().catch((err) => {
