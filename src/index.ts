@@ -5,20 +5,26 @@ import { TaskClient } from './taskClient.js';
 import { launchBrowser } from './browser/launch.js';
 import { getRandomProxy } from './proxy/select.js';
 import { removeWatermarkViaBrowser } from './sora/browserFlow.js';
+import { sendTelegramMessage } from './telegram.js';
 import type { BrowserContext, Page } from '@playwright/test';
 
 const POLL_INTERVAL_MS = 10_000; // 10s
 
+type ProcessTaskResult =
+  | { status: 'no_task' }
+  | { status: 'success' }
+  | { status: 'error'; message: string; taskId?: string };
+
 async function processTaskWithBrowser(
   taskClient: TaskClient,
   page: Page
-): Promise<'has_task' | 'no_task' | 'task_processed'> {
+): Promise<ProcessTaskResult> {
   // 1) Claim task từ media.yofatik.ai theo PRODUCT_CODE
   const task = await taskClient.claimTask(runtimeConfig.PRODUCT_CODE);
 
   if (!task) {
     // Không có task pending → giữ browser, không đóng
-    return 'no_task';
+    return { status: 'no_task' };
   }
 
   console.log('[worker] Đã claim task', { id: task.id });
@@ -29,7 +35,11 @@ async function processTaskWithBrowser(
     console.error('[worker] ' + reason);
     // Thiếu dữ liệu đầu vào → báo lỗi hẳn, không retry
     await taskClient.reportTask(task.id, reason);
-    return 'task_processed'; // Đã xử lý xong (report), cần đóng browser
+    return {
+      status: 'error',
+      message: reason,
+      taskId: task.id
+    }; // Đã xử lý xong (report), cần đóng browser
   }
 
   // 2) Browser đã sẵn sàng, chỉ cần refresh và xử lý ngay (nhanh hơn nhiều)
@@ -44,7 +54,11 @@ async function processTaskWithBrowser(
     console.error('[worker] ' + reason);
     // Lỗi tạm thời khi xử lý → reset để hệ thống retry task với worker khác/lần khác
     await taskClient.resetTask(task.id);
-    return 'task_processed'; // Đã xử lý xong (reset), cần đóng browser
+    return {
+      status: 'error',
+      message: reason,
+      taskId: task.id
+    }; // Đã xử lý xong (reset), cần đóng browser
   }
 
   // 3) Download video (local) từ mediaUrl
@@ -63,13 +77,17 @@ async function processTaskWithBrowser(
       resultUrl: browserResult.mediaUrl
     });
     console.log('============================================================');
-    return 'task_processed'; // Đã xử lý xong (thành công), cần đóng browser
+    return { status: 'success' }; // Đã xử lý xong (thành công), cần đóng browser
   } else {
     const reason = 'Không download được video từ mediaUrl';
     console.error('[worker] ' + reason);
     // Download fail cũng coi là lỗi tạm thời → reset cho retry
     await taskClient.resetTask(task.id);
-    return 'task_processed'; // Đã xử lý xong (reset), cần đóng browser
+    return {
+      status: 'error',
+      message: reason,
+      taskId: task.id
+    }; // Đã xử lý xong (reset), cần đóng browser
   }
 }
 
@@ -100,7 +118,10 @@ async function runWorkerOnce(): Promise<void> {
 
   let sessionTaskCount = 0;
 
-  while (true) {
+  let consecutiveFailures = 0;
+  let keepRunning = true;
+
+  while (keepRunning) {
     try {
       if (!page || !context) {
         throw new Error('Browser context/page không tồn tại');
@@ -109,11 +130,32 @@ async function runWorkerOnce(): Promise<void> {
       // Claim task và xử lý với browser đã sẵn sàng
       const result = await processTaskWithBrowser(taskClient, page);
 
-      if (result === 'no_task') {
+      if (result.status === 'no_task') {
         // Không có task → giữ browser, đợi một chút rồi claim lại
         console.log('[worker] Không có task, đợi 10s rồi claim lại...');
         await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
         continue;
+      }
+
+      if (result.status === 'error') {
+        consecutiveFailures += 1;
+        const msg = `[worker] ❌ Lỗi khi xử lý task${result.taskId ? ' ' + result.taskId : ''}: ${
+          result.message
+        } (lỗi liên tục: ${consecutiveFailures})`;
+        console.error(msg);
+        await sendTelegramMessage(msg);
+
+        if (consecutiveFailures >= 3) {
+          const stopMsg =
+            '[worker] 🚫 Dừng worker sau 3 lỗi liên tục. Vui lòng kiểm tra và chạy lại thủ công.';
+          console.error(stopMsg);
+          await sendTelegramMessage(stopMsg);
+          keepRunning = false;
+          break;
+        }
+      } else {
+        // reset counter khi thành công
+        consecutiveFailures = 0;
       }
 
       // Đã xử lý xong task (thành công hoặc thất bại)
@@ -150,8 +192,20 @@ async function runWorkerOnce(): Promise<void> {
         // Reset counter cho session mới
         sessionTaskCount = 0;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[worker] Lỗi khi xử lý task:', error);
+      consecutiveFailures += 1;
+      const errMsg = `[worker] ❌ Exception khi chạy worker: ${error?.message || error} (lỗi liên tục: ${consecutiveFailures})`;
+      await sendTelegramMessage(errMsg);
+
+      if (consecutiveFailures >= 3) {
+        const stopMsg =
+          '[worker] 🚫 Dừng worker sau 3 lỗi liên tục (exception). Vui lòng kiểm tra và chạy lại thủ công.';
+        console.error(stopMsg);
+        await sendTelegramMessage(stopMsg);
+        keepRunning = false;
+        break;
+      }
 
       // Nếu lỗi, đóng browser và load lại
       try {
@@ -166,22 +220,33 @@ async function runWorkerOnce(): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 2_000));
 
       // Load browser mới
-      console.log('[worker] Đang load browser mới sau lỗi...');
-      const newProxy = getRandomProxy();
-      browserSession = await launchBrowser({ proxy: newProxy });
-      context = browserSession.context;
-      page = browserSession.page;
+      if (keepRunning) {
+        console.log('[worker] Đang load browser mới sau lỗi...');
+        const newProxy = getRandomProxy();
+        browserSession = await launchBrowser({ proxy: newProxy });
+        context = browserSession.context;
+        page = browserSession.page;
 
-      // Load web provider mới và đợi 5s để trang load xong
-      console.log('[worker] Browser mới đã sẵn sàng, đang load trang socialutils...');
-      await page.goto(runtimeConfig.SOCIAL_URL, {
-        waitUntil: 'domcontentloaded',
-        timeout: 60_000
-      });
-      console.log('[worker] Đã load trang, đợi 5s để trang load hoàn toàn...');
-      await new Promise((resolve) => setTimeout(resolve, 5_000));
-      console.log('[worker] Bắt đầu claim task...');
+        // Load web provider mới và đợi 5s để trang load xong
+        console.log('[worker] Browser mới đã sẵn sàng, đang load trang socialutils...');
+        await page.goto(runtimeConfig.SOCIAL_URL, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60_000
+        });
+        console.log('[worker] Đã load trang, đợi 5s để trang load hoàn toàn...');
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+        console.log('[worker] Bắt đầu claim task...');
+      }
     }
+  }
+
+  // Nếu dừng vì lỗi liên tục, đảm bảo đóng browser
+  try {
+    if (context) {
+      await context.close();
+    }
+  } catch (closeError) {
+    console.error('[worker] Lỗi khi đóng browser sau khi dừng:', closeError);
   }
 }
 
