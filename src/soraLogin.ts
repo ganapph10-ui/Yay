@@ -23,7 +23,8 @@ async function main() {
   let context: any = null;
   let page: any = null;
 
-  // Chuẩn bị fingerprint để browser trông "hợp lệ" hơn và gắn vào profile lưu lại
+  // Chuẩn bị fingerprint để browser trông "hợp lệ" hơn và gắn vào profile lưu lại.
+  // Nếu không lấy được fingerprint → dừng hẳn (đảm bảo không chạy Chromium gốc).
   try {
     plugin.setWorkingFolder(resolve(runtimeConfig.FINGERPRINT_WORKDIR));
     plugin.setServiceKey(runtimeConfig.BABLOSOFT_API_KEY);
@@ -35,9 +36,8 @@ async function main() {
     plugin.useFingerprint(fp);
     console.log('[sora-login] Đã áp dụng fingerprint thành công (sẽ lưu cùng profile)');
   } catch (err: any) {
-    console.error(
-      '[sora-login] Lỗi khi dùng fingerprint, sẽ thử mở persistent profile với Playwright thường:',
-      err?.message || String(err)
+    throw new Error(
+      `[sora-login] Không thể lấy/áp dụng fingerprint: ${err?.message || String(err)}. Dừng để tránh chạy Chromium gốc.`
     );
   }
 
@@ -51,15 +51,9 @@ async function main() {
     page = context.pages()[0] ?? (await context.newPage());
     browserOrContext = context;
   } catch (err: any) {
-    console.error(
-      '[sora-login] Lỗi khi launch persistent (fingerprint), fallback sang Playwright thường:',
-      err?.message || String(err)
+    throw new Error(
+      `[sora-login] Không thể launch browser fingerprint persistent: ${err?.message || String(err)}`
     );
-    const { chromium } = await import('@playwright/test');
-    const userDataDir = resolve(runtimeConfig.SORA_PRO_PROFILE_DIR);
-    context = await chromium.launchPersistentContext(userDataDir, { headless: false });
-    page = context.pages()[0] ?? (await context.newPage());
-    browserOrContext = context;
   }
 
   if (!browserOrContext || !page || !context) {
