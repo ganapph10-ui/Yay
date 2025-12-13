@@ -6,7 +6,7 @@ export interface BrowserRemoveResult {
   mediaUrl: string;
 }
 
-const SOCIAL_API_PATH = '/api/sora/remove-watermark';
+const SORA_PRO_API_PATH = '/api/jobs/post-url';
 
 export async function removeWatermarkViaBrowser(
   page: Page,
@@ -19,7 +19,7 @@ export async function removeWatermarkViaBrowser(
       console.log('[browser-flow] Page đã ở đúng URL, refresh page...');
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
     } else {
-      console.log('[browser-flow] Điều hướng tới trang SocialUtils...');
+      console.log('[browser-flow] Điều hướng tới trang removesorawatermark.pro...');
       await page.goto(runtimeConfig.SOCIAL_URL, {
         waitUntil: 'domcontentloaded',
         timeout: 60_000
@@ -38,13 +38,44 @@ export async function removeWatermarkViaBrowser(
       await page.waitForTimeout(500);
     }
 
-    const input = page
-      .locator(
-        '#video-input, input[name="url"], input[name="videoUrl"], input[placeholder*="Sora"], input[placeholder*="Video URL"]'
-      )
-      .first();
+    // Try multiple selectors for the input field
+    const inputSelectors = [
+      '#video-input',
+      'input[name="url"]',
+      'input[name="videoUrl"]',
+      'input[name="soraUrl"]',
+      'input[type="url"]',
+      'input[placeholder*="Sora" i]',
+      'input[placeholder*="Video URL" i]',
+      'input[placeholder*="URL" i]',
+      'textarea[name="url"]',
+      'textarea[name="videoUrl"]'
+    ];
+    
+    let input: ReturnType<Page['locator']> | null = null;
+    console.log('[browser-flow] Đang tìm input video với các selector...');
+    for (const selector of inputSelectors) {
+      const locator = page.locator(selector).first();
+      const isVisible = await locator.isVisible({ timeout: 2_000 }).catch(() => false);
+      if (isVisible) {
+        input = locator;
+        console.log(`[browser-flow] Tìm thấy input với selector: ${selector}`);
+        break;
+      }
+    }
+    
+    if (!input) {
+      // Take screenshot for debugging
+      const screenshot = await page.screenshot({ fullPage: true }).catch(() => null);
+      const pageContent = await page.content().catch(() => '');
+      throw new Error(
+        `Không tìm thấy input video trên trang. URL: ${page.url()}. ` +
+        `Đã thử ${inputSelectors.length} selectors khác nhau.`
+      );
+    }
+    
     console.log('[browser-flow] Đang click vào input video...');
-    await input.waitFor({ timeout: 15_000 });
+    await input.waitFor({ state: 'visible', timeout: 15_000 });
     await input.click();
     await input.fill('');
     await input.type(soraUrl, { delay: 20 });
@@ -55,21 +86,57 @@ export async function removeWatermarkViaBrowser(
       throw new Error(`Input value không khớp! Expected: ${soraUrl}, Got: ${inputValue}`);
     }
 
-    console.log('[browser-flow] Đang click button Remove Watermark...');
+    console.log('[browser-flow] Đang tìm và click button Remove Watermark...');
+    
+    // Try multiple button selectors
+    const buttonSelectors = [
+      'button:has-text("Remove Watermark" i)',
+      'button:has-text("Remove" i)',
+      'button:has-text("Submit" i)',
+      'button[type="submit"]',
+      'button.btn-primary',
+      'button.btn',
+      'input[type="submit"]'
+    ];
+    
+    let button: ReturnType<Page['locator']> | null = null;
+    for (const selector of buttonSelectors) {
+      const locator = page.locator(selector).first();
+      const isVisible = await locator.isVisible({ timeout: 2_000 }).catch(() => false);
+      if (isVisible) {
+        button = locator;
+        console.log(`[browser-flow] Tìm thấy button với selector: ${selector}`);
+        break;
+      }
+    }
+    
+    if (!button) {
+      throw new Error(
+        `Không tìm thấy button Remove Watermark trên trang. URL: ${page.url()}. ` +
+        `Đã thử ${buttonSelectors.length} selectors khác nhau.`
+      );
+    }
     
     const [response] = await Promise.all([
       page.waitForResponse(
         (res) =>
-          res.url().includes(SOCIAL_API_PATH) && res.request().method() === 'POST',
+          res.url().includes(SORA_PRO_API_PATH) && res.request().method() === 'POST',
         { timeout: 60_000 }
       ),
-      page.locator('button.btn, button:has-text("Remove Watermark")').first().click()
+      button.click()
     ]);
 
-    console.log('[browser-flow] Đã click button và nhận response từ API /api/sora/remove-watermark');
+    console.log('[browser-flow] Đã click button và nhận response từ API /api/jobs/post-url');
 
     const result = (await response.json()) as any;
 
+    // removesorawatermark.pro API returns { success: boolean, videoUrl?: string }
+    if (result?.success && typeof result?.videoUrl === 'string') {
+      console.log('[browser-flow] API thành công! Video URL:', result.videoUrl);
+      return { mediaUrl: result.videoUrl };
+    }
+    
+    // Fallback for old format (mediaUrl)
     if (result?.errorCode == null && typeof result?.mediaUrl === 'string') {
       console.log('[browser-flow] API thành công! Media URL:', result.mediaUrl);
       return { mediaUrl: result.mediaUrl };

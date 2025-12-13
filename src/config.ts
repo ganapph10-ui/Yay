@@ -37,9 +37,9 @@ export const runtimeConfig: RuntimeConfig = {
   BROWSER_HEADLESS: toBool(process.env.BROWSER_HEADLESS, false),
   SOCIAL_URL:
     process.env.SOCIAL_URL ??
-    process.env.SOCIALUTILS_URL ??
     process.env.REMOVER_URL ??
-    'https://socialutils.io/sora-watermark-remover',
+    process.env.SORA_PRO_BASE_URL ??
+    'https://www.removesorawatermark.pro/en',
   SORA_PRO_BASE_URL:
     process.env.SORA_PRO_BASE_URL ?? 'https://www.removesorawatermark.pro/en',
   SORA_PRO_API_URL:

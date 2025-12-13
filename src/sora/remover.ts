@@ -7,7 +7,9 @@ import { randomUUID } from 'node:crypto';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import type { Cookie } from '@playwright/test';
 
-const API_URL = 'https://socialutils.io/api/sora/remove-watermark';
+// This file may not be used if using browser flow
+// Keeping for backward compatibility
+const API_URL = process.env.SORA_PRO_API_URL || 'https://www.removesorawatermark.pro/api/jobs/post-url';
 
 export interface RemoveWatermarkResult {
   mediaUrl: string;
@@ -72,7 +74,7 @@ export async function callRemoveWatermarkApi(
 
   const cookieHeader = cookiesToHeader(cookies);
 
-  // Dùng proxy khi gọi socialutils.io API (quan trọng: cookie lấy bằng proxy nào thì phải dùng proxy đó)
+  // Dùng proxy khi gọi API (quan trọng: cookie lấy bằng proxy nào thì phải dùng proxy đó)
   const agent = new HttpsProxyAgent(proxy);
 
   const res = await assertOk(
@@ -84,8 +86,8 @@ export async function callRemoveWatermarkApi(
         accept: '*/*',
         'accept-language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
         'content-type': 'application/json',
-        origin: 'https://socialutils.io',
-        referer: 'https://socialutils.io/sora-watermark-remover',
+        origin: 'https://www.removesorawatermark.pro',
+        referer: 'https://www.removesorawatermark.pro/en',
         'sec-ch-ua': '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
