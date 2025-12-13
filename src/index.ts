@@ -42,9 +42,9 @@ async function processTaskWithBrowser(
     }; // Đã xử lý xong (report), cần đóng browser
   }
 
-  // 2) Browser đã sẵn sàng, chỉ cần refresh và xử lý ngay (nhanh hơn nhiều)
+  // 2) Browser đã sẵn sàng, lấy cookies và gọi API trực tiếp
   console.log('\n============================================================');
-  console.log('BƯỚC 2: REMOVE WATERMARK & DOWNLOAD QUA BROWSER');
+  console.log('BƯỚC 2: LẤY COOKIES TỪ BROWSER & GỌI API REMOVE WATERMARK');
   console.log('============================================================');
 
   const browserResult = await removeWatermarkViaBrowser(page, soraUrl, task.id);
