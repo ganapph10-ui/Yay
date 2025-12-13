@@ -116,8 +116,6 @@ async function runWorkerOnce(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 5_000));
   console.log('[worker] Bắt đầu claim task...');
 
-  let sessionTaskCount = 0;
-
   let consecutiveFailures = 0;
   let keepRunning = true;
 
@@ -138,6 +136,26 @@ async function runWorkerOnce(): Promise<void> {
       }
 
       if (result.status === 'error') {
+        // Kiểm tra nếu lỗi do token hết hạn (401/403) thì refresh browser
+        const isAuthError = result.message.includes('401') || 
+                           result.message.includes('403') || 
+                           result.message.includes('auth') ||
+                           result.message.includes('token') ||
+                           result.message.includes('expired');
+        
+        if (isAuthError && page) {
+          console.log('[worker] Phát hiện lỗi auth/token, đang refresh browser để lấy token mới...');
+          try {
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
+            await page.waitForTimeout(3_000);
+            console.log('[worker] Đã refresh browser, tiếp tục với task tiếp theo...');
+            // Không tăng consecutiveFailures cho lỗi auth vì đã refresh
+            continue;
+          } catch (refreshError) {
+            console.error('[worker] Lỗi khi refresh browser:', refreshError);
+          }
+        }
+        
         consecutiveFailures += 1;
         const msg = `[worker] ❌ Lỗi khi xử lý task${result.taskId ? ' ' + result.taskId : ''}: ${
           result.message
@@ -157,41 +175,6 @@ async function runWorkerOnce(): Promise<void> {
         // reset counter khi thành công
         consecutiveFailures = 0;
       }
-
-      // Đã xử lý xong task (thành công hoặc thất bại)
-      sessionTaskCount += 1;
-      console.log('[worker] Đã xử lý xong task, số task trong session hiện tại:', sessionTaskCount);
-
-      if (sessionTaskCount >= 2) {
-        // Đủ 2 task cho 1 browser session → đóng browser và load browser mới
-        console.log(
-          '[worker] Đã xử lý đủ 2 task cho browser hiện tại, đóng browser và chuẩn bị load browser mới...'
-        );
-      await context.close();
-
-      // Đợi một chút trước khi load browser mới
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-
-      // Load browser mới cho task tiếp theo
-      console.log('[worker] Đang load browser mới với fingerprint + proxy...');
-      const newProxy = getRandomProxy();
-      browserSession = await launchBrowser({ proxy: newProxy });
-      context = browserSession.context;
-      page = browserSession.page;
-
-        // Load web provider mới và đợi 5s để trang load xong
-        console.log('[worker] Browser mới đã sẵn sàng, đang load trang removesorawatermark.pro...');
-        await page.goto(runtimeConfig.SOCIAL_URL, {
-        waitUntil: 'domcontentloaded',
-        timeout: 60_000
-      });
-      console.log('[worker] Đã load trang, đợi 5s để trang load hoàn toàn...');
-      await new Promise((resolve) => setTimeout(resolve, 5_000));
-      console.log('[worker] Bắt đầu claim task...');
-
-        // Reset counter cho session mới
-        sessionTaskCount = 0;
-      }
     } catch (error: any) {
       console.error('[worker] Lỗi khi xử lý task:', error);
       consecutiveFailures += 1;
@@ -207,35 +190,16 @@ async function runWorkerOnce(): Promise<void> {
         break;
       }
 
-      // Nếu lỗi, đóng browser và load lại
-      try {
-        if (context) {
-        await context.close();
+      // Nếu lỗi, thử refresh browser để lấy token mới
+      if (keepRunning && page) {
+        console.log('[worker] Thử refresh browser sau lỗi...');
+        try {
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
+          await page.waitForTimeout(3_000);
+          console.log('[worker] Đã refresh browser, tiếp tục...');
+        } catch (refreshError) {
+          console.error('[worker] Lỗi khi refresh browser:', refreshError);
         }
-      } catch (closeError) {
-        console.error('[worker] Lỗi khi đóng browser:', closeError);
-      }
-
-      // Đợi một chút trước khi load browser mới
-      await new Promise((resolve) => setTimeout(resolve, 2_000));
-
-      // Load browser mới
-      if (keepRunning) {
-        console.log('[worker] Đang load browser mới sau lỗi...');
-        const newProxy = getRandomProxy();
-        browserSession = await launchBrowser({ proxy: newProxy });
-        context = browserSession.context;
-        page = browserSession.page;
-
-        // Load web provider mới và đợi 5s để trang load xong
-        console.log('[worker] Browser mới đã sẵn sàng, đang load trang removesorawatermark.pro...');
-        await page.goto(runtimeConfig.SOCIAL_URL, {
-          waitUntil: 'domcontentloaded',
-          timeout: 60_000
-        });
-        console.log('[worker] Đã load trang, đợi 5s để trang load hoàn toàn...');
-        await new Promise((resolve) => setTimeout(resolve, 5_000));
-        console.log('[worker] Bắt đầu claim task...');
       }
     }
   }
