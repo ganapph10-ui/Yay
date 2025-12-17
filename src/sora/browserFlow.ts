@@ -20,6 +20,47 @@ function cookiesToHeader(cookies: { name: string; value: string }[]): string {
 }
 
 /**
+ * Kiểm tra và đăng nhập lại nếu bị out acc
+ */
+async function checkAndLoginIfNeeded(page: Page): Promise<void> {
+  try {
+    const loginButton = page.locator('button:has-text("Login")').first();
+    const isLoginVisible = await loginButton.isVisible({ timeout: 2_000 }).catch(() => false);
+    
+    if (isLoginVisible) {
+      console.log('[browser-flow] Phát hiện bị out acc, đang click nút Login...');
+      await loginButton.click();
+      await page.waitForTimeout(1_000);
+      
+      // Đợi modal đăng nhập xuất hiện và click "Sign in with Google"
+      console.log('[browser-flow] Đang đợi modal đăng nhập xuất hiện...');
+      const googleSignInButton = page.locator('button:has-text("Sign in with Google")').first();
+      await googleSignInButton.waitFor({ state: 'visible', timeout: 10_000 });
+      console.log('[browser-flow] Đang click nút "Sign in with Google"...');
+      await googleSignInButton.click();
+      console.log('[browser-flow] Đã click Google sign in, đợi đăng nhập hoàn tất...');
+      
+      // Đợi một chút để đăng nhập hoàn tất
+      await page.waitForTimeout(5_000);
+      
+      // Kiểm tra xem đã đăng nhập thành công chưa (nút Login biến mất)
+      const stillLoggedOut = await loginButton.isVisible({ timeout: 2_000 }).catch(() => false);
+      if (stillLoggedOut) {
+        console.log('[browser-flow] Vẫn chưa đăng nhập, đợi thêm...');
+        await page.waitForTimeout(5_000);
+      } else {
+        console.log('[browser-flow] ✅ Đã đăng nhập thành công!');
+      }
+    } else {
+      console.log('[browser-flow] Đã đăng nhập, tiếp tục...');
+    }
+  } catch (checkError: any) {
+    console.log('[browser-flow] Lỗi khi kiểm tra login status:', checkError?.message || checkError);
+    // Tiếp tục dù có lỗi
+  }
+}
+
+/**
  * Get cookies from browser context and call API directly to remove watermark
  * Browser is only used to get fresh cookies/tokens, not for web interaction
  */
@@ -40,6 +81,9 @@ export async function removeWatermarkViaBrowser(
 
     console.log('[browser-flow] Đợi 3s để trang load và cookies được set...');
     await page.waitForTimeout(3_000);
+    
+    // Kiểm tra xem có bị out acc không và đăng nhập lại nếu cần
+    await checkAndLoginIfNeeded(page);
 
     // Get cookies from browser context
     const origin = new URL(runtimeConfig.SOCIAL_URL).origin;
@@ -86,7 +130,12 @@ export async function removeWatermarkViaBrowser(
         try {
           await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
           await page.waitForTimeout(3_000);
-          console.log('[browser-flow] Đã refresh page, thử lại API call...');
+          console.log('[browser-flow] Đã refresh page, kiểm tra xem có bị out acc không...');
+          
+          // Kiểm tra xem có bị out acc không và đăng nhập lại nếu cần
+          await checkAndLoginIfNeeded(page);
+          
+          console.log('[browser-flow] Thử lại API call...');
           
           // Lấy cookies mới sau khi refresh
           const newCookies = await context.cookies(origin);
